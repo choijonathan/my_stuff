@@ -33,20 +33,24 @@ def download_pair(pair):
     ft.close()
     outf = open(datafile, "a")
     if newfile:
-        df.to_csv(outf, index=False, cols=COLUMNS)
+        df.to_csv(outf, index=False, columns=COLUMNS)
     else:
-        df.to_csv(outf, index=False, cols=COLUMNS, header=False)
+        df.to_csv(outf, index=False, columns=COLUMNS, header=False)
     outf.close()
     print("Finish.")
     time.sleep(30)
 
 def get_pair_list():
     df = pd.read_json("https://poloniex.com/public?command=return24hVolume")
-    return df.columns
+
+    return [x for x in df.columns if '_' in x ]
 
 def load_pair(pair):
     path=os.path.join(DATA_PATH,pair.upper()+'.csv')
     df=pd.read_csv(path)
-    df['date']=df['date'].apply(lambda x:datetime.datetime.fromtimestamp(x))
-    df=df.set_index('date').tz_localize('US/Eastern',ambiguous='infer')
+    df['date']=df['date'].apply(lambda x:datetime.datetime.utcfromtimestamp(x))
+    df=df.set_index('date').tz_localize('UTC')
+    returns = df['close'] / df['close'].shift(1) - 1
+    df['cumProd']=(1+returns).cumprod()
+    df['cumProd'][0]=1
     return df
