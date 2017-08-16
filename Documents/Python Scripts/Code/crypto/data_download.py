@@ -50,7 +50,47 @@ def load_pair(pair):
     df=pd.read_csv(path)
     df['date']=df['date'].apply(lambda x:datetime.datetime.utcfromtimestamp(x))
     df=df.set_index('date').tz_localize('UTC')
-    returns = df['close'] / df['close'].shift(1) - 1
+    returns = df['weightedAverage'] / df['weightedAverage'].shift(1) - 1
     df['cumProd']=(1+returns).cumprod()
     df['cumProd'][0]=1
     return df
+
+def load_all_assets():
+    file_list=os.listdir(DATA_PATH)
+    csv_list = [x for x in file_list if '.csv' in x]
+    out={}
+    for pair in csv_list:
+        print pair
+        pair_name=pair.split('.csv')[0]
+        out[pair_name]=load_pair(pair_name)
+    return pd.Panel(out)
+
+
+def zscore(df):
+    mean = pd.rolling_mean(df, 12 * 24 * 360, min_periods=12 * 24 * 30)
+    std = pd.rolling_std(df, 12 * 24 * 360, min_periods=12 * 24 * 30)
+    return (df - mean) / std
+
+
+def timing_curve(df):
+    return (df).clip(-4, 4) / 4
+
+def reversal_pl(btc_ret,long_only=True):
+    model=pd.ols(y=btc_ret,x=btc_ret.shift(1),window=12*24*5,window_type='rolling')
+    betas=model.beta['x']
+    signal=timing_curve(betas*zscore(btc_ret))
+    sigma=np.sqrt(365*24*12)*pd.ewmstd(btc_ret,com=12*24*5,min_periods=12*24*5)
+    if long_only:
+        view=(.3*(signal)/sigma).clip(0,9999999)
+    else:
+        view=(.3*(signal)/sigma)
+    t_cost=(view.diff()).abs()*.005
+    pl=view.shift(1)*btc_ret
+    net_pl=view.shift(1)*(btc_ret)-t_cost
+    turnover=365*12*24*view.diff().abs().mean()
+    print calc_sharpe(pl)
+    print calc_sharpe(net_pl)
+    print turnover
+    return pd.DataFrame({'view':view,
+           'pl':pl,
+           'net_pl':net_pl})
